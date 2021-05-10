@@ -4,6 +4,7 @@
 #include <mutex>
 #include <fstream>
 #include <dirent.h>
+
 std::vector<SOCKET> client_sockets;
 std::mutex broadcast_mutex;
 void MySocket::http_request(SOCKET aSock)
@@ -35,35 +36,52 @@ void MySocket::http_request(SOCKET aSock)
 		std::string file;
 		sfile >> file;
 		if (file == "") { // главная страница
-			send_message(aSock, "sensor 1: 10<br> sensor 2: "
+			std::string data1 = "HTTP/1.1 200 OK\r\n";
+			data1 += "sensor 1: 10<br> sensor 2: "
 				"20<br><a href=\"http://edu.tu-bryansk.ru/\">"
-				"BSTU</a><br><a href=\"myfolder\">myfolder</a>");
+				"BSTU</a><br><a href=\"myfolder\">myfolder</a>";
+
+			send(aSock, data1.c_str(), data1.length(), 0);
 		}
 		else {
-			fin.open(file.c_str(), std::ios::in);
-			if (fin.is_open()) { // открываем запрашиваемый файл
-				std::string data;
-				std::getline(fin, data);
-				send_message(aSock, data.c_str());
+			if (file == "index.html") {
+				std::string answer{ "HTTP/1.1 200 OK\r\n" };
+				std::ifstream fin(file);
+				std::string str(std::istreambuf_iterator<char>{fin}, {});
+				answer += "Content-Length: " + std::to_string(str.length()) + "\r\n\r\n\r\n";
+				answer += str + "\r\n\r\n";
+				send(aSock, answer.c_str(), answer.length(), 0);
 			}
-			else //если это не файл
-			{
-				std::string path = "C:\\Users\\enigm\\Desktop\\HTTP-Server\\Debug";
-				path += "\\";
-				path += file;
-				DIR* dp = opendir(path.c_str()); // пробуем открыть его как папку
-				if (dp != NULL) {
-					dirent* ep;
-					std::string folder_data;
-					while ((ep = readdir(dp)) != NULL) {
-						if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0) continue;
-						folder_data += ep->d_name;
-						folder_data += "\r\n";
-					}
-					send_message(aSock, folder_data.c_str());
+			else {
+				std::ifstream fin(file, std::ios::in | std::ios::binary);
+				if (fin.is_open()) { // открываем запрашиваемый файл
+					std::string str(std::istreambuf_iterator<char>{fin}, {});
+					std::string data = "HTTP/1.1 200 OK\r\n";
+					data += "Content-Length " + std::to_string(str.length()) + "\r\n" + "Content-Type image\r\n\r\n";
+					data += str;
+					data += "\r\n";
+					send(aSock, data.c_str(), data.size(), 0);
+					//send_message(aSock, data.c_str());
 				}
-				else { // иначе это непонятно что
-					send_404(aSock); // отправляем 404
+				else //если это не файл
+				{
+					std::string path = "C:\\Users\\79679\\Desktop\\HTTP-Server\\Debug";
+					path += "\\";
+					path += file;
+					DIR* dp = opendir(path.c_str()); // пробуем открыть его как папку
+					if (dp != NULL) {
+						dirent* ep;
+						std::string folder_data;
+						while ((ep = readdir(dp)) != NULL) {
+							if (strcmp(ep->d_name, ".") == 0 || strcmp(ep->d_name, "..") == 0) continue;
+							folder_data += ep->d_name;
+							folder_data += "\r\n";
+						}
+						send_message(aSock, folder_data.c_str());
+					}
+					else { // иначе это непонятно что
+						send_404(aSock); // отправляем 404
+					}
 				}
 			}
 		}
@@ -96,15 +114,11 @@ void MySocket::parse_http_request(const char* apstrRequest, sHTTPHeader* apHeade
 
 void MySocket::send_message(SOCKET aSock, const char* apstrMessage)
 {
-	char buffer[65536] = { 0 };
+	std::string hbody = "HTTP/1.1 200 OK\r\n";
+	hbody += apstrMessage;
 
-	strcat(buffer, "HTTP/1.1 200 OK\n\n");
-	strcat(buffer, "<h1>");
-	strcat(buffer, apstrMessage);
-	strcat(buffer, "</h1>");
-
-	int len = strlen(buffer);
-	send(aSock, buffer, len, 0);
+	//std::cout << "RESPONSE: " << std::endl << buffer << std::endl;
+	send(aSock, hbody.c_str(), hbody.size(), 0);
 }
 void MySocket::send_404(SOCKET aSock)
 {
